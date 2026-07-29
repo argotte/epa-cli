@@ -1,6 +1,6 @@
 import { input, select, Separator } from "@inquirer/prompts";
 import chalk from "chalk";
-import type { Product } from "../domain/product.js";
+import type { Product, ProductDetail } from "../domain/product.js";
 import type { ProductRepository, ProductSearchResult } from "../domain/product-repository.js";
 import type { StoreAvailabilityRepository } from "../domain/store-availability-repository.js";
 import { formatProductChoiceLabel, printProductDetail, printProducts, printSearchSummary } from "./format.js";
@@ -65,38 +65,42 @@ async function showProductDetail(
     const spinner = new Spinner("Consultando EPA...");
     spinner.start();
 
+    // Acotado a propósito: solo las llamadas de red van en el try. Si el
+    // `select` de más abajo queda adentro, un Ctrl+C ahí (ExitPromptError)
+    // se confunde con un error de EPA en vez de cerrar el CLI en paz.
+    let detail: ProductDetail | null;
     try {
-      const detail = await repository.getDetail(currentUrlKey);
-
-      if (!detail) {
-        spinner.stop();
-        console.log(chalk.yellow("No se pudo cargar el detalle de este producto."));
-        return;
-      }
-
-      // Best-effort: si el scraping de disponibilidad falla (bloqueado,
-      // timeout, cambió el theme), no debe tumbar el resto de la ficha.
-      const availability = await storeAvailabilityRepository.getByProductUrl(detail.productUrl).catch(() => null);
-      spinner.stop();
-
-      printProductDetail(detail, locale, availability);
-
-      const choices: { name: string; value: DetailChoice }[] = detail.relatedProducts.map((related) => ({
-        name: `Ver ${related.sku} — ${related.name}`,
-        value: `related:${related.urlKey}` as const,
-      }));
-      choices.push({ name: "Volver", value: "back" });
-
-      const choice = await select<DetailChoice>({ message: "¿Qué quieres hacer?", choices });
-      if (choice === "back") {
-        viewing = false;
-      } else {
-        currentUrlKey = choice.slice("related:".length);
-      }
+      detail = await repository.getDetail(currentUrlKey);
     } catch (err) {
       spinner.stop();
       console.error(chalk.red(`Error consultando EPA: ${(err as Error).message}`));
       return;
+    }
+
+    if (!detail) {
+      spinner.stop();
+      console.log(chalk.yellow("No se pudo cargar el detalle de este producto."));
+      return;
+    }
+
+    // Best-effort: si el scraping de disponibilidad falla (bloqueado,
+    // timeout, cambió el theme), no debe tumbar el resto de la ficha.
+    const availability = await storeAvailabilityRepository.getByProductUrl(detail.productUrl).catch(() => null);
+    spinner.stop();
+
+    printProductDetail(detail, locale, availability);
+
+    const choices: { name: string; value: DetailChoice }[] = detail.relatedProducts.map((related) => ({
+      name: `Ver ${related.sku} — ${related.name}`,
+      value: `related:${related.urlKey}` as const,
+    }));
+    choices.push({ name: "Volver", value: "back" });
+
+    const choice = await select<DetailChoice>({ message: "¿Qué quieres hacer?", choices });
+    if (choice === "back") {
+      viewing = false;
+    } else {
+      currentUrlKey = choice.slice("related:".length);
     }
   }
 }
