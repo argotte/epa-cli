@@ -1,4 +1,4 @@
-import type { Product } from "./product.js";
+import type { Product, ProductDetail } from "./product.js";
 
 export interface ProductSearchFilter {
   categoryUid?: string;
@@ -43,4 +43,6 @@ export interface ProductRepository {
   search(term: string, options?: ProductSearchOptions): Promise<ProductSearchResult>;
   /** Devuelve `null` si no hay match exacto de SKU. */
   getBySku(sku: string): Promise<Product | null>;
+  /** Ficha completa por `urlKey`. `null` si no existe. */
+  getDetail(urlKey: string): Promise<ProductDetail | null>;
 }

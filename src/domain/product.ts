@@ -45,3 +45,30 @@ export interface Product {
    */
   categoryPath: string[];
 }
+
+export interface RelatedProductRef {
+  sku: string;
+  name: string;
+  urlKey: string;
+}
+
+/**
+ * Ficha completa de un producto (lo que se ve en la página de detalle).
+ * NO incluye tabla de "Características" ni disponibilidad por tienda
+ * física - EPA no expone ninguna de las dos vía GraphQL (confirmado por
+ * introspección de SimpleProduct/BundleProduct el 29/07/2026, mismos
+ * campos que ProductInterface). Esa parte del sitio sale de otra fuente
+ * (probablemente REST/AJAX) que este cliente no consume.
+ */
+export interface ProductDetail extends Product {
+  /** Texto plano, ya sin las etiquetas HTML que trae Magento. */
+  description: string;
+  /** 0-100. 0 si no tiene reseñas. */
+  ratingSummary: number;
+  reviewCount: number;
+  relatedProducts: RelatedProductRef[];
+  /** Fecha hasta la que aplica el precio de oferta, si hay una. */
+  specialToDate: string | null;
+  /** Galería completa (más allá de la miniatura de `image`). */
+  images: string[];
+}

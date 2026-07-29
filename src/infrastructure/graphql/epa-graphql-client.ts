@@ -7,7 +7,9 @@
 // User-Agent de navegador real. Sin esto, CloudFront/WAF devuelve un
 // 403 con una página de "mantenimiento" en vez de la respuesta real
 // (confirmado empíricamente el 27/07/2026 - ver notas del proyecto).
-const DEFAULT_USER_AGENT =
+// Exportado porque infrastructure/html/ también lo necesita para pedir
+// páginas de producto directamente (no solo /graphql).
+export const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 

@@ -1,7 +1,8 @@
 import chalk from "chalk";
 import type { CategoryListing } from "../domain/category.js";
-import { StockStatus, type Money, type Product } from "../domain/product.js";
+import { StockStatus, type Money, type Product, type ProductDetail } from "../domain/product.js";
 import type { ProductSearchResult } from "../domain/product-repository.js";
+import type { StoreAvailabilityEntry } from "../domain/store-availability.js";
 
 /**
  * Texto ya coloreado (`text`) junto con su ancho VISIBLE (`width`), es
@@ -132,6 +133,142 @@ export function printProducts(products: Product[], locale: string): void {
     printBoxBottom(width);
     console.log("");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Etiqueta de una línea para el picker "¿Cuál producto?" del menú
+// (@inquirer/prompts `select`). Trunca al ancho de la terminal para que
+// nunca se corte a la mitad ni salte de línea de forma fea.
+// ---------------------------------------------------------------------------
+
+// Margen para el prefijo que agrega inquirer ("❯ " / "  ") delante de
+// cada opción - no es exacto, alcanza para no desbordar la terminal.
+const CHOICE_PREFIX_MARGIN = 4;
+const CHOICE_MIN_WIDTH = 40;
+const CHOICE_MAX_WIDTH = 120;
+const CHOICE_MIN_NAME_WIDTH = 8;
+
+export function formatProductChoiceLabel(product: Product, locale: string): string {
+  const width =
+    Math.min(Math.max(process.stdout.columns ?? 80, CHOICE_MIN_WIDTH), CHOICE_MAX_WIDTH) - CHOICE_PREFIX_MARGIN;
+
+  const price =
+    product.specialPrice !== null
+      ? formatMoney({ value: product.specialPrice, currency: product.price.final.currency }, locale)
+      : formatMoney(product.price.final, locale);
+  const suffix = `  ${price}`;
+
+  const nameWidth = Math.max(width - product.sku.length - 2 - suffix.length, CHOICE_MIN_NAME_WIDTH);
+  const name = truncate(product.name, nameWidth);
+
+  return `${chalk.cyan.bold(product.sku)}  ${name}${chalk.gray(suffix)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Ficha de detalle (menú interactivo: seleccionar un producto con Enter).
+// ---------------------------------------------------------------------------
+
+function wrapText(text: string, width: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    if (paragraph.length === 0) {
+      lines.push("");
+      continue;
+    }
+    let current = "";
+    for (const word of paragraph.split(" ")) {
+      const candidate = current.length === 0 ? word : `${current} ${word}`;
+      if (candidate.length > width) {
+        if (current.length > 0) {
+          lines.push(current);
+        }
+        current = word.length > width ? truncate(word, width) : word;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current.length > 0) {
+      lines.push(current);
+    }
+  }
+  return lines;
+}
+
+function plainLine(text: string, colorize: (s: string) => string = (s) => s): Line {
+  return { text: colorize(text), width: text.length };
+}
+
+/**
+ * `availability` sale de scraping best-effort (ver
+ * infrastructure/html/html-store-availability-repository.ts), no de
+ * GraphQL - `null` significa "no se pudo determinar", no "sin stock en
+ * ningún lado". Se muestra igual, con una nota de que la fuente no es
+ * oficial, para que quede claro que es menos confiable que el resto de
+ * la ficha.
+ */
+export function printProductDetail(
+  detail: ProductDetail,
+  locale: string,
+  availability: StoreAvailabilityEntry[] | null,
+): void {
+  const width = getContentWidth();
+
+  console.log("");
+  printBoxTop(width);
+  printBoxLine(buildHeaderLine(detail.sku, detail.name, width), width);
+
+  const categoryLine = buildCategoryLine(detail.categoryPath, width);
+  if (categoryLine) {
+    printBoxLine(categoryLine, width);
+  }
+
+  printBoxLine(buildPriceStockLine(detail, locale, width), width);
+
+  if (detail.specialToDate) {
+    printBoxLine(plainLine(`Oferta válida hasta ${detail.specialToDate}`, chalk.yellow), width);
+  }
+
+  if (detail.reviewCount > 0) {
+    const plural = detail.reviewCount === 1 ? "" : "s";
+    printBoxLine(
+      plainLine(`${detail.ratingSummary}% de calificación (${detail.reviewCount} reseña${plural})`, chalk.magenta),
+      width,
+    );
+  }
+
+  if (availability) {
+    const cities = availability.filter((entry) => entry.available).map((entry) => entry.city);
+    if (cities.length > 0) {
+      printBoxLine(plainLine("Disponible en tiendas físicas:", chalk.bold), width);
+      for (const line of wrapText(cities.join(", "), width)) {
+        printBoxLine(plainLine(line, chalk.green), width);
+      }
+    } else {
+      printBoxLine(plainLine("No disponible actualmente en tiendas físicas.", chalk.yellow), width);
+    }
+  } else {
+    printBoxLine(plainLine("Disponibilidad en tiendas: no se pudo determinar (fuente no oficial).", chalk.gray), width);
+  }
+
+  printBoxLine(buildUrlLine(detail.productUrl, width), width);
+
+  if (detail.description.length > 0) {
+    printBoxLine(plainLine(""), width);
+    for (const line of wrapText(detail.description, width)) {
+      printBoxLine(plainLine(line), width);
+    }
+  }
+
+  printBoxBottom(width);
+
+  if (detail.relatedProducts.length > 0) {
+    console.log("");
+    console.log(chalk.bold("También te puede interesar:"));
+    for (const related of detail.relatedProducts) {
+      console.log(`  ${chalk.cyan(related.sku)}  ${related.name}`);
+    }
+  }
+  console.log("");
 }
 
 export function printSearchSummary(result: ProductSearchResult): void {

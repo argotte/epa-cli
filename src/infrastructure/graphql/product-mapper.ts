@@ -1,6 +1,7 @@
 import type { StoreConfig } from "../../config.js";
-import { StockStatus, type Product } from "../../domain/product.js";
-import type { RawProduct } from "./types.js";
+import { StockStatus, type Product, type ProductDetail } from "../../domain/product.js";
+import { stripHtml } from "./html-text.js";
+import type { RawProduct, RawProductDetail } from "./types.js";
 
 /**
  * Función pura, sin dependencias externas -> fácil de testear sin
@@ -23,5 +24,21 @@ export function mapRawProductToDomain(raw: RawProduct, store: StoreConfig): Prod
     // El primer elemento es siempre la raíz genérica del catálogo
     // ("Productos" en toda la tienda) - no aporta nada, se descarta.
     categoryPath: raw.categories.slice(1).map((category) => category.name),
+  };
+}
+
+export function mapRawProductDetailToDomain(raw: RawProductDetail, store: StoreConfig): ProductDetail {
+  return {
+    ...mapRawProductToDomain(raw, store),
+    description: stripHtml(raw.description.html),
+    ratingSummary: raw.rating_summary,
+    reviewCount: raw.review_count,
+    specialToDate: raw.special_to_date,
+    images: raw.media_gallery.map((image) => image.url),
+    relatedProducts: raw.related_products.map((related) => ({
+      sku: related.sku,
+      name: related.name,
+      urlKey: related.url_key,
+    })),
   };
 }

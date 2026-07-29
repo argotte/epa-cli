@@ -1,5 +1,5 @@
 import type { StoreConfig } from "../../config.js";
-import type { Product } from "../../domain/product.js";
+import type { Product, ProductDetail } from "../../domain/product.js";
 import type {
   ProductRepository,
   ProductSearchFilter,
@@ -8,9 +8,9 @@ import type {
   ProductSortOption,
 } from "../../domain/product-repository.js";
 import type { GraphQLClient } from "./epa-graphql-client.js";
-import { mapRawProductToDomain } from "./product-mapper.js";
-import { SEARCH_PRODUCTS_QUERY } from "./queries.js";
-import type { ProductSearchResponse } from "./types.js";
+import { mapRawProductDetailToDomain, mapRawProductToDomain } from "./product-mapper.js";
+import { PRODUCT_DETAIL_QUERY, SEARCH_PRODUCTS_QUERY } from "./queries.js";
+import type { ProductDetailResponse, ProductSearchResponse } from "./types.js";
 
 interface RawProductFilterInput extends Record<string, unknown> {
   category_uid?: { eq: string };
@@ -139,5 +139,13 @@ export class EpaProductRepository implements ProductRepository {
     const result = await this.search(sku, { pageSize: SKU_LOOKUP_PAGE_SIZE });
     const normalized = sku.trim().toLowerCase();
     return result.items.find((item) => item.sku.toLowerCase() === normalized) ?? null;
+  }
+
+  async getDetail(urlKey: string): Promise<ProductDetail | null> {
+    const data = await this.client.request<ProductDetailResponse, { urlKey: string }>(PRODUCT_DETAIL_QUERY, {
+      urlKey,
+    });
+    const raw = data.products.items[0];
+    return raw ? mapRawProductDetailToDomain(raw, this.store) : null;
   }
 }

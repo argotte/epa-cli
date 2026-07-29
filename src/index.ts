@@ -17,6 +17,7 @@ import { EpaCategoryRepository } from "./infrastructure/graphql/epa-category-rep
 import { GraphQLClient } from "./infrastructure/graphql/epa-graphql-client.js";
 import { EpaProductRepository } from "./infrastructure/graphql/epa-product-repository.js";
 import { fetchStoreConfig } from "./infrastructure/graphql/store-config.js";
+import { HtmlStoreAvailabilityRepository } from "./infrastructure/html/html-store-availability-repository.js";
 
 /**
  * Composition root: el único lugar del proyecto donde se decide QUÉ
@@ -71,10 +72,11 @@ async function main(): Promise<void> {
 
   const repository = new EpaProductRepository(client, store);
   const categoryRepository = new EpaCategoryRepository(client);
+  const storeAvailabilityRepository = new HtmlStoreAvailabilityRepository();
 
   switch (command.kind) {
     case "menu":
-      await runMenu(repository, store.locale);
+      await runMenu(repository, storeAvailabilityRepository, store.locale);
       return;
     case "buscar":
       process.exitCode = await runBuscarCommand(repository, categoryRepository, command.term, command.options, store.locale);

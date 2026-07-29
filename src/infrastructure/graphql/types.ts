@@ -39,6 +39,27 @@ export interface RawProduct {
   categories: RawCategory[];
 }
 
+export interface RawRelatedProduct {
+  sku: string;
+  name: string;
+  url_key: string;
+}
+
+export interface RawProductDetail extends RawProduct {
+  special_to_date: string | null;
+  media_gallery: RawProductImage[];
+  description: { html: string };
+  rating_summary: number;
+  review_count: number;
+  related_products: RawRelatedProduct[];
+}
+
+export interface ProductDetailResponse {
+  products: {
+    items: RawProductDetail[];
+  };
+}
+
 export interface RawPageInfo {
   current_page: number;
   total_pages: number;

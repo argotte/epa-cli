@@ -30,6 +30,25 @@ encabezado `N resultados — página P de T`. Si hay más de una página, te ofr
 **Buscar por SKU** — escribe el SKU exacto (ej. `VE-1001010`) y te trae ese
 producto puntual, si existe.
 
+En ambos flujos podés seleccionar "Ver detalle de un producto" (Enter sobre
+uno de la lista) para ver su ficha completa: descripción larga, categoría,
+precio, disponibilidad, calificación/reseñas si tiene, vigencia de la oferta
+si aplica, **disponibilidad por tienda física** ("Disponible en: Maracaibo,
+Valencia..."), y productos relacionados — que a su vez se pueden abrir con
+Enter, encadenando fichas.
+
+La disponibilidad por tienda **no sale de GraphQL** (confirmado que no existe
+ahí, ver "Limitaciones confirmadas del schema") — sale de un scraping
+best-effort del HTML público de la página de producto
+(`HtmlStoreAvailabilityRepository`), porque ese dato viene renderizado
+server-side por Magento y no hay ningún endpoint (ni GraphQL ni REST) que lo
+exponga. Es la única parte del CLI que no habla con `/graphql`, y a propósito
+está aislada en su propio adaptador: si el theme de EPA cambia y el scraping
+deja de matchear, la ficha sigue mostrando todo lo demás con una nota
+("no se pudo determinar") en vez de romperse. La tabla de "Características"
+(dimensiones, etc.) **no** se agregó — es la misma historia (renderizada
+server-side, sin API), pero no vale la pena scrapearla también por ahora.
+
 Mientras espera la respuesta de EPA, el CLI muestra un spinner (se
 desactiva solo si la salida no es una terminal, por ejemplo al redirigir a
 un archivo).
@@ -90,8 +109,6 @@ esté caído. `GraphQLClient` ya manda un User-Agent de navegador real por
 defecto para evitar esto. Si en el futuro empieza a fallar de nuevo, ese es
 el primer sospechoso.
 
-## Arquitectura (Repository / Ports & Adapters)
-
 ```
 src/
   domain/                     — Puerto. No sabe nada de HTTP ni GraphQL.
@@ -101,6 +118,11 @@ src/
                                   getBySku
     category.ts                  Entidad CategorySummary / CategoryListing
     category-repository.ts       Interfaz CategoryRepository: getChildren
+    store-availability.ts        Entidad StoreAvailabilityEntry (city, available)
+    store-availability-
+    repository.ts                Interfaz StoreAvailabilityRepository - deja
+                                  explícito en el propio tipo que `null` =
+                                  "no se pudo determinar", no "sin oferta"
 
   config.ts                   — StoreConfig (moneda, locale, sufijo de URL, base
                                  URL) y sus defaults, usado tanto por el mapper
@@ -113,16 +135,30 @@ src/
                                   1 reintento en fallos de red/5xx; nunca en
                                   403 ni en errores GraphQL)
     store-config.ts              Trae storeConfig (moneda, locale, sufijo de URL)
-    product-mapper.ts            Función pura: DTO crudo -> Product de dominio
+    html-text.ts                 Stripper mínimo HTML -> texto plano, para la
+                                  descripción del detalle (no es un parser HTML
+                                  completo, alcanza para lo que devuelve Magento)
+    product-mapper.ts            Funciones puras: DTO crudo -> Product/
+                                  ProductDetail de dominio
     epa-product-repository.ts    Implementa ProductRepository; getBySku busca
-                                  por texto y filtra el match exacto (ver por
+                                  por texto y filtra el match exacto, getDetail
+                                  trae la ficha completa por url_key (ver por
                                   qué en "Limitaciones confirmadas del schema")
     epa-category-repository.ts   Implementa CategoryRepository contra
                                   categories() de Magento
 
+  infrastructure/html/        — Único adaptador que NO habla GraphQL.
+    html-store-availability-
+    repository.ts                Implementa StoreAvailabilityRepository
+                                  scrapeando el bloque "stockbystores" del
+                                  HTML público de producto (best-effort: si
+                                  falla devuelve `null`, nunca lanza)
+
   cli/                        — Presentación. Depende de los puertos, no de EPA.
     menu.ts                      Loop del menú interactivo (@inquirer/prompts):
-                                  buscar, buscar por SKU, paginar resultados
+                                  buscar, buscar por SKU, paginar resultados,
+                                  ver detalle de un producto y navegar a sus
+                                  relacionados
     args.ts                      Parseo de argumentos (node:util parseArgs) para
                                   el modo no interactivo: comandos y flags
     commands.ts                  Ejecuta cada comando no interactivo (buscar,
@@ -183,6 +219,18 @@ contra el endpoint real (29/07/2026) y **no funciona**:
   rechaza. El sitio ordena por precio vía Algolia, no vía esta API.
 - `pickupLocations` devuelve siempre `total_count: 0` — no hay store locator
   por API; las tiendas físicas son páginas CMS (`/tiendas/*.html`).
+- **La tabla de "Características" y el "Disponible en: [ciudades]"** que se
+  ven en la página de un producto **no existen en `ProductInterface` ni en
+  ninguno de sus tipos concretos** (`SimpleProduct`, `BundleProduct`, etc. -
+  reconfirmado por introspección el 29/07/2026, mismos campos que la
+  interfaz genérica). Confirmado además que **no hay ninguna llamada
+  GraphQL/REST/AJAX de por medio** para ninguna de las dos: inspeccionando
+  la red del navegador al cargar una página de producto real, cero requests
+  aparte de assets estáticos - y el HTML devuelto por un `curl` plano (sin
+  JS) ya trae ambos bloques completos. Es contenido 100% renderizado
+  server-side por Magento en la plantilla PHP del tema. La disponibilidad
+  por tienda sí se consigue en el CLI (ver arriba, `HtmlStoreAvailabilityRepository`)
+  scrapeando ese HTML; "Características" no se implementó.
 - **Promociones y Liquidación son categorías normales**, no un endpoint
   aparte: `epa promos` usa `category_uid` `NDQ0` (Promociones) y `NjM2`
   (Liquidación), confirmados por consulta directa el 29/07/2026 — si EPA
@@ -196,7 +244,6 @@ contra el endpoint real (29/07/2026) y **no funciona**:
 - Refinar resultados por las facetas de precio/categoría que trae
   `aggregations` (ahora mismo `--min/--max/--categoria` hay que conocerlos
   de antemano, no se sugieren solos como en el sitio)
-- Ficha de detalle de producto (descripción, galería, relacionados)
 - Caché local (SQLite o JSON) para trackear cambios de precio en el tiempo
 - Un `AlgoliaProductRepository` alternativo
 
