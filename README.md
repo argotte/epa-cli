@@ -109,70 +109,6 @@ esté caído. `GraphQLClient` ya manda un User-Agent de navegador real por
 defecto para evitar esto. Si en el futuro empieza a fallar de nuevo, ese es
 el primer sospechoso.
 
-```
-src/
-  domain/                     — Puerto. No sabe nada de HTTP ni GraphQL.
-    product.ts                   Entidad Product, tipos (Money, StockStatus...)
-    product-repository.ts        Interfaz ProductRepository: search paginado
-                                  (con filtro por precio/categoría y orden) +
-                                  getBySku
-    category.ts                  Entidad CategorySummary / CategoryListing
-    category-repository.ts       Interfaz CategoryRepository: getChildren
-    store-availability.ts        Entidad StoreAvailabilityEntry (city, available)
-    store-availability-
-    repository.ts                Interfaz StoreAvailabilityRepository - deja
-                                  explícito en el propio tipo que `null` =
-                                  "no se pudo determinar", no "sin oferta"
-
-  config.ts                   — StoreConfig (moneda, locale, sufijo de URL, base
-                                 URL) y sus defaults, usado tanto por el mapper
-                                 como por el formato de salida.
-
-  infrastructure/graphql/     — Adaptador concreto contra EPA.
-    types.ts                     DTOs crudos, tal cual los devuelve Magento
-    queries.ts                   Strings de las queries GraphQL
-    epa-graphql-client.ts        Transporte HTTP genérico (timeout de 10s +
-                                  1 reintento en fallos de red/5xx; nunca en
-                                  403 ni en errores GraphQL)
-    store-config.ts              Trae storeConfig (moneda, locale, sufijo de URL)
-    html-text.ts                 Stripper mínimo HTML -> texto plano, para la
-                                  descripción del detalle (no es un parser HTML
-                                  completo, alcanza para lo que devuelve Magento)
-    product-mapper.ts            Funciones puras: DTO crudo -> Product/
-                                  ProductDetail de dominio
-    epa-product-repository.ts    Implementa ProductRepository; getBySku busca
-                                  por texto y filtra el match exacto, getDetail
-                                  trae la ficha completa por url_key (ver por
-                                  qué en "Limitaciones confirmadas del schema")
-    epa-category-repository.ts   Implementa CategoryRepository contra
-                                  categories() de Magento
-
-  infrastructure/html/        — Único adaptador que NO habla GraphQL.
-    html-store-availability-
-    repository.ts                Implementa StoreAvailabilityRepository
-                                  scrapeando el bloque "stockbystores" del
-                                  HTML público de producto (best-effort: si
-                                  falla devuelve `null`, nunca lanza)
-
-  cli/                        — Presentación. Depende de los puertos, no de EPA.
-    menu.ts                      Loop del menú interactivo (@inquirer/prompts):
-                                  buscar, buscar por SKU, paginar resultados,
-                                  ver detalle de un producto y navegar a sus
-                                  relacionados
-    args.ts                      Parseo de argumentos (node:util parseArgs) para
-                                  el modo no interactivo: comandos y flags
-    commands.ts                  Ejecuta cada comando no interactivo (buscar,
-                                  sku, categorias, promos) y decide el exit code
-    format.ts                    Tres formatos de salida: tarjetas con borde
-                                  (default), tabla compacta (--formato tabla) y
-                                  JSON (--json); precios vía Intl.NumberFormat
-    spinner.ts                   Spinner sin dependencias mientras se consulta EPA
-
-  index.ts                    — Composition root: aquí se decide qué
-                                 implementación concreta usar, y si la corrida
-                                 va al menú o a un comando según los argumentos.
-```
-
 **Por qué está separado así:** el CLI (`cli/menu.ts`) solo conoce la interfaz
 `ProductRepository` — no importa `EpaProductRepository`, ni GraphQL, ni
 `fetch` en ningún lado. Eso significa:
@@ -185,7 +121,7 @@ src/
 - **Se puede reusar en NestJS.** `domain/product-repository.ts` es una
   interfaz plana de TypeScript — puedes envolver `EpaProductRepository` en
   un `@Injectable()` con un provider de NestJS (`{ provide: PRODUCT_REPOSITORY,
-  useClass: EpaProductRepository }`) sin cambiar una línea de esta lógica.
+useClass: EpaProductRepository }`) sin cambiar una línea de esta lógica.
 - **Tests sin red.** `product-mapper.ts` es una función pura (DTO in, Product
   out) — por eso `product-mapper.test.ts` prueba los casos importantes
   (agotado, con oferta, sin imagen) sin mockear `fetch` ni nada de HTTP.
