@@ -36,4 +36,12 @@ export interface Product {
   urlKey: string;
   /** URL absoluta a la página del producto, ya armada. */
   productUrl: string;
+  /**
+   * Categorías del catálogo, de la más general a la más específica
+   * (ej. ["Herramientas", "Taladros", "Taladros eléctricos"]), sin la
+   * raíz genérica del catálogo. No es la ubicación de una tienda física
+   * -EPA no expone eso por API- pero es lo más parecido a "dónde vive
+   * este producto" que hay disponible.
+   */
+  categoryPath: string[];
 }

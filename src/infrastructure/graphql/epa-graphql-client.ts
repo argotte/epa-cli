@@ -11,6 +11,9 @@ const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
+const DEFAULT_TIMEOUT_MS = 10_000;
+const RETRY_DELAY_MS = 500;
+
 interface GraphQLError {
   message: string;
 }
@@ -30,16 +33,33 @@ export class GraphQLRequestError extends Error {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class GraphQLClient {
   constructor(
     private readonly endpoint: string,
     private readonly userAgent: string = DEFAULT_USER_AGENT,
+    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
   async request<TData, TVariables extends Record<string, unknown> = Record<string, unknown>>(
     query: string,
     variables?: TVariables,
   ): Promise<TData> {
+    return this.requestWithRetry<TData, TVariables>(query, variables, 0);
+  }
+
+  private async requestWithRetry<TData, TVariables extends Record<string, unknown>>(
+    query: string,
+    variables: TVariables | undefined,
+    attempt: number,
+  ): Promise<TData> {
+    // Solo reintentamos fallos de red/timeout y 5xx - nunca un 403 (es
+    // el WAF, no un problema transitorio) ni errores GraphQL (repetir
+    // la misma query mal formada no la arregla).
+    const canRetry = attempt === 0;
     let response: Response;
 
     try {
@@ -50,15 +70,27 @@ export class GraphQLClient {
           "User-Agent": this.userAgent,
         },
         body: JSON.stringify({ query, variables }),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
+      if (canRetry) {
+        await sleep(RETRY_DELAY_MS);
+        return this.requestWithRetry<TData, TVariables>(query, variables, attempt + 1);
+      }
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
       throw new GraphQLRequestError(
-        `No se pudo conectar a ${this.endpoint}: ${(err as Error).message}`,
+        isTimeout
+          ? `${this.endpoint} no respondió en ${this.timeoutMs}ms.`
+          : `No se pudo conectar a ${this.endpoint}: ${(err as Error).message}`,
         err,
       );
     }
 
     if (!response.ok) {
+      if (response.status >= 500 && canRetry) {
+        await sleep(RETRY_DELAY_MS);
+        return this.requestWithRetry<TData, TVariables>(query, variables, attempt + 1);
+      }
       throw new GraphQLRequestError(
         `Respuesta HTTP ${response.status} ${response.statusText} de ${this.endpoint}. ` +
           `Si es un 403, probablemente el WAF bloqueó la request (revisa el User-Agent).`,

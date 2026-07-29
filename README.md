@@ -2,7 +2,7 @@
 
 ![EPA CLI Logo](src/assets/epacli.jpg)
 
-CLI interactivo por si te sientes superior al resto de la humanidad por quere usar el cli para todo, en esta ocasión para consultar el catálogo de [Ferretería EPA Venezuela](https://ve.epaenlinea.com)
+CLI interactivo por si te sientes superior al resto de la humanidad por querer usar el cli para todo, en esta ocasión para consultar el catálogo de [Ferretería EPA Venezuela](https://ve.epaenlinea.com)
 vía su endpoint GraphQL público (`/graphql`).
 
 ## Uso
@@ -17,18 +17,35 @@ Te va a salir un menú navegable con flechas (↑↓ + Enter):
 ```
 ? ¿Qué quieres hacer?
 ❯ Buscar productos
+  Buscar por SKU
   Salir
 ```
 
-Elige "Buscar productos", escribe un término (ej. `taladro`), y te lista SKU,
-nombre, precio (con el precio de oferta tachado si aplica), disponibilidad y
-el link directo al producto.
+**Buscar productos** — escribe un término (ej. `taladro`) y te lista SKU,
+nombre, precio (con el precio de oferta tachado si aplica, formateado con la
+moneda de la tienda), disponibilidad y el link directo al producto, con un
+encabezado `N resultados — página P de T`. Si hay más de una página, te ofrece
+"Siguiente página" / "Página anterior" sin tener que repetir la búsqueda.
+
+**Buscar por SKU** — escribe el SKU exacto (ej. `VE-1001010`) y te trae ese
+producto puntual, si existe.
+
+Mientras espera la respuesta de EPA, el CLI muestra un spinner (se
+desactiva solo si la salida no es una terminal, por ejemplo al redirigir a
+un archivo).
 
 Para compilar y correr la versión de producción:
 
 ```bash
 npm run build
 npm start
+```
+
+También se puede instalar como comando global:
+
+```bash
+npm link
+epa
 ```
 
 ## Por qué necesita un User-Agent de navegador
@@ -47,18 +64,32 @@ el primer sospechoso.
 src/
   domain/                     — Puerto. No sabe nada de HTTP ni GraphQL.
     product.ts                   Entidad Product, tipos (Money, StockStatus...)
-    product-repository.ts        Interfaz ProductRepository (el "puerto")
+    product-repository.ts        Interfaz ProductRepository (el "puerto"): search
+                                  paginado + getBySku
+
+  config.ts                   — StoreConfig (moneda, locale, sufijo de URL, base
+                                 URL) y sus defaults, usado tanto por el mapper
+                                 como por el formato de salida.
 
   infrastructure/graphql/     — Adaptador concreto contra EPA.
     types.ts                     DTOs crudos, tal cual los devuelve Magento
     queries.ts                   Strings de las queries GraphQL
-    epa-graphql-client.ts        Transporte HTTP genérico (no sabe qué es un "producto")
+    epa-graphql-client.ts        Transporte HTTP genérico (timeout de 10s +
+                                  1 reintento en fallos de red/5xx; nunca en
+                                  403 ni en errores GraphQL)
+    store-config.ts              Trae storeConfig (moneda, locale, sufijo de URL)
     product-mapper.ts            Función pura: DTO crudo -> Product de dominio
-    epa-product-repository.ts    Implementa ProductRepository usando el client + mapper
+    epa-product-repository.ts    Implementa ProductRepository usando el client +
+                                  mapper; getBySku busca por texto y filtra el
+                                  match exacto (ver por qué en "Próximos pasos")
 
   cli/                        — Presentación. Depende de ProductRepository, no de EPA.
-    menu.ts                      Loop del menú interactivo (@inquirer/prompts)
-    format.ts                    Impresión bonita en terminal (chalk)
+    menu.ts                      Loop del menú interactivo (@inquirer/prompts):
+                                  buscar, buscar por SKU, paginar resultados
+    format.ts                    Impresión bonita en terminal (chalk), precios
+                                  formateados con Intl.NumberFormat según la
+                                  moneda/locale de la tienda
+    spinner.ts                   Spinner sin dependencias mientras se consulta EPA
 
   index.ts                    — Composition root: aquí se decide qué
                                  implementación concreta usar.
@@ -95,12 +126,32 @@ explorando el esquema tú mismo. Ejemplo para ver los campos de categorías:
 Mándalo por Postman (o agrega un método nuevo al `GraphQLClient`) contra
 `https://ve.epaenlinea.com/graphql`.
 
+## Limitaciones confirmadas del schema
+
+Por si en el futuro se te ocurre agregarlas y perder tiempo — esto ya se probó
+contra el endpoint real (29/07/2026) y **no funciona**:
+
+- **No hay filtro por SKU** en `ProductAttributeFilterInput` (solo acepta
+  `category_id`, `category_uid`, `created_at`, `news_from_date`,
+  `news_to_date`, `price`, `url_key`). Por eso "Buscar por SKU" internamente
+  hace `search: <sku>` y filtra el match exacto en el cliente.
+- **No se puede ordenar por precio del lado del servidor.**
+  `ProductAttributeSortInput` solo admite `name`, `position`, `relevance` —
+  aunque `sort_fields` anuncie `price` como default, el input type lo
+  rechaza. El sitio ordena por precio vía Algolia, no vía esta API.
+- `pickupLocations` devuelve siempre `total_count: 0` — no hay store locator
+  por API; las tiendas físicas son páginas CMS (`/tiendas/*.html`).
+
 ## Próximos pasos posibles
 
-- Comando para consultar un SKU específico (`getBySku`)
+- Modo no interactivo con flags/subcomandos (`epa buscar taladro --json`) para
+  usar el CLI en scripts, además del menú
+- Explorar categorías con flechas (el árbol completo ya es consultable vía
+  `categories`) y refinar resultados por las facetas de precio/categoría que
+  trae `aggregations`
+- Ficha de detalle de producto (descripción, galería, relacionados)
 - Caché local (SQLite o JSON) para trackear cambios de precio en el tiempo
 - Un `AlgoliaProductRepository` alternativo
-- Paginación en el menú cuando `total_count` sea mayor al `pageSize`
 
 ## Aviso
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { DEFAULT_STORE_CONFIG } from "../../config.js";
 import { StockStatus } from "../../domain/product.js";
 import { mapRawProductToDomain } from "./product-mapper.js";
 import type { RawProduct } from "./types.js";
@@ -19,12 +20,17 @@ function buildRawProduct(overrides: Partial<RawProduct> = {}): RawProduct {
     },
     small_image: { url: "https://ve.epaenlinea.com/media/catalog/product/x.jpg" },
     url_key: "taladro-percutor-inalambrico-3-8-12-v-black-decker",
+    categories: [
+      { name: "Productos", url_path: "productos" },
+      { name: "Herramientas", url_path: "productos/herramientas" },
+      { name: "Taladros", url_path: "taladros" },
+    ],
     ...overrides,
   };
 }
 
 test("mapea un producto disponible sin oferta", () => {
-  const product = mapRawProductToDomain(buildRawProduct());
+  const product = mapRawProductToDomain(buildRawProduct(), DEFAULT_STORE_CONFIG);
 
   assert.equal(product.sku, "VE-1472016");
   assert.equal(product.stockStatus, StockStatus.InStock);
@@ -34,7 +40,7 @@ test("mapea un producto disponible sin oferta", () => {
 });
 
 test("mapea stock_status agotado", () => {
-  const product = mapRawProductToDomain(buildRawProduct({ stock_status: "OUT_OF_STOCK" }));
+  const product = mapRawProductToDomain(buildRawProduct({ stock_status: "OUT_OF_STOCK" }), DEFAULT_STORE_CONFIG);
   assert.equal(product.stockStatus, StockStatus.OutOfStock);
 });
 
@@ -49,6 +55,7 @@ test("conserva el precio de oferta cuando existe", () => {
         },
       },
     }),
+    DEFAULT_STORE_CONFIG,
   );
 
   assert.equal(product.specialPrice, 119.99);
@@ -57,6 +64,16 @@ test("conserva el precio de oferta cuando existe", () => {
 });
 
 test("small_image null se mapea a image null, no revienta", () => {
-  const product = mapRawProductToDomain(buildRawProduct({ small_image: null }));
+  const product = mapRawProductToDomain(buildRawProduct({ small_image: null }), DEFAULT_STORE_CONFIG);
   assert.equal(product.image, null);
+});
+
+test("categoryPath descarta la raíz genérica del catálogo", () => {
+  const product = mapRawProductToDomain(buildRawProduct(), DEFAULT_STORE_CONFIG);
+  assert.deepEqual(product.categoryPath, ["Herramientas", "Taladros"]);
+});
+
+test("categoryPath queda vacío si no hay categorías", () => {
+  const product = mapRawProductToDomain(buildRawProduct({ categories: [] }), DEFAULT_STORE_CONFIG);
+  assert.deepEqual(product.categoryPath, []);
 });

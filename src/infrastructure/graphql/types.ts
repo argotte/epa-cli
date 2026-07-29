@@ -16,6 +16,11 @@ export interface RawProductImage {
 
 export type RawStockStatus = "IN_STOCK" | "OUT_OF_STOCK";
 
+export interface RawCategory {
+  name: string;
+  url_path: string;
+}
+
 export interface RawProduct {
   sku: string;
   name: string;
@@ -30,11 +35,30 @@ export interface RawProduct {
   };
   small_image: RawProductImage | null;
   url_key: string;
+  /** Viene ordenado raíz -> hoja (ej. "Productos", "Herramientas", "Taladros"). */
+  categories: RawCategory[];
+}
+
+export interface RawPageInfo {
+  current_page: number;
+  total_pages: number;
 }
 
 export interface ProductSearchResponse {
   products: {
     total_count: number;
+    page_info: RawPageInfo;
     items: RawProduct[];
   };
+}
+
+export interface RawStoreConfig {
+  store_code: string;
+  default_display_currency_code: string;
+  locale: string;
+  product_url_suffix: string;
+}
+
+export interface StoreConfigResponse {
+  storeConfig: RawStoreConfig;
 }

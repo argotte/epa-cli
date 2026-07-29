@@ -5,6 +5,13 @@ export interface ProductSearchOptions {
   page?: number;
 }
 
+export interface ProductSearchResult {
+  items: Product[];
+  totalCount: number;
+  currentPage: number;
+  totalPages: number;
+}
+
 /**
  * Puerto de dominio (patrón Repository / Ports & Adapters).
  *
@@ -16,5 +23,7 @@ export interface ProductSearchOptions {
  *    reutiliza tal cual como el "token" de inyección.
  */
 export interface ProductRepository {
-  search(term: string, options?: ProductSearchOptions): Promise<Product[]>;
+  search(term: string, options?: ProductSearchOptions): Promise<ProductSearchResult>;
+  /** Devuelve `null` si no hay match exacto de SKU. */
+  getBySku(sku: string): Promise<Product | null>;
 }
