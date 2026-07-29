@@ -1,5 +1,7 @@
 # epa-cli
 
+![EPA CLI Logo](src/assets/epacli.jpg)
+
 CLI interactivo para consultar el catálogo de [Ferretería EPA Venezuela](https://ve.epaenlinea.com)
 vía su endpoint GraphQL público (`/graphql`).
 
