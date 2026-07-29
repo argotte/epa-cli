@@ -48,6 +48,38 @@ npm link
 epa
 ```
 
+## Modo scriptable (flags)
+
+Sin argumentos, `epa` abre el menú interactivo. Con argumentos, ejecuta el
+comando y termina — útil para scripts y pipes:
+
+```bash
+epa buscar taladro                          # igual que el menú, en una línea
+epa buscar taladro --min 100 --max 200      # filtro de precio
+epa buscar --categoria taladros             # sin texto, solo por categoría
+epa buscar taladro --orden nombre-asc       # orden alfabético
+epa sku VE-1001010                          # un producto puntual
+epa categorias                              # categorías de primer nivel
+epa categorias herramientas                 # subcategorías de "herramientas"
+epa promos                                  # categoría Promociones
+epa promos --liquidacion                    # categoría Liquidación
+```
+
+Formato de salida, en cualquier comando:
+
+```bash
+epa buscar taladro --formato tabla          # una fila por producto, compacto
+epa buscar taladro --json                   # JSON puro en stdout, para jq/scripts
+epa buscar taladro --json | jq '.[].sku'
+```
+
+Con `--json`, stdout no lleva nada más que el JSON (ni el resumen "N
+resultados", ni colores) — todo lo demás va a stderr. `--no-color` desactiva
+los colores en cualquier formato. El código de salida indica el resultado:
+`0` con resultados, `2` sin resultados, `1` si hubo un error. Ver `epa --help`
+para la lista completa de opciones (`--page`, `--size`, `--min`, `--max`,
+`--categoria`, `--orden`).
+
 ## Por qué necesita un User-Agent de navegador
 
 `ve.epaenlinea.com` corre detrás de CloudFront con lo que parece ser un WAF
@@ -64,8 +96,11 @@ el primer sospechoso.
 src/
   domain/                     — Puerto. No sabe nada de HTTP ni GraphQL.
     product.ts                   Entidad Product, tipos (Money, StockStatus...)
-    product-repository.ts        Interfaz ProductRepository (el "puerto"): search
-                                  paginado + getBySku
+    product-repository.ts        Interfaz ProductRepository: search paginado
+                                  (con filtro por precio/categoría y orden) +
+                                  getBySku
+    category.ts                  Entidad CategorySummary / CategoryListing
+    category-repository.ts       Interfaz CategoryRepository: getChildren
 
   config.ts                   — StoreConfig (moneda, locale, sufijo de URL, base
                                  URL) y sus defaults, usado tanto por el mapper
@@ -79,20 +114,27 @@ src/
                                   403 ni en errores GraphQL)
     store-config.ts              Trae storeConfig (moneda, locale, sufijo de URL)
     product-mapper.ts            Función pura: DTO crudo -> Product de dominio
-    epa-product-repository.ts    Implementa ProductRepository usando el client +
-                                  mapper; getBySku busca por texto y filtra el
-                                  match exacto (ver por qué en "Próximos pasos")
+    epa-product-repository.ts    Implementa ProductRepository; getBySku busca
+                                  por texto y filtra el match exacto (ver por
+                                  qué en "Limitaciones confirmadas del schema")
+    epa-category-repository.ts   Implementa CategoryRepository contra
+                                  categories() de Magento
 
-  cli/                        — Presentación. Depende de ProductRepository, no de EPA.
+  cli/                        — Presentación. Depende de los puertos, no de EPA.
     menu.ts                      Loop del menú interactivo (@inquirer/prompts):
                                   buscar, buscar por SKU, paginar resultados
-    format.ts                    Impresión bonita en terminal (chalk), precios
-                                  formateados con Intl.NumberFormat según la
-                                  moneda/locale de la tienda
+    args.ts                      Parseo de argumentos (node:util parseArgs) para
+                                  el modo no interactivo: comandos y flags
+    commands.ts                  Ejecuta cada comando no interactivo (buscar,
+                                  sku, categorias, promos) y decide el exit code
+    format.ts                    Tres formatos de salida: tarjetas con borde
+                                  (default), tabla compacta (--formato tabla) y
+                                  JSON (--json); precios vía Intl.NumberFormat
     spinner.ts                   Spinner sin dependencias mientras se consulta EPA
 
   index.ts                    — Composition root: aquí se decide qué
-                                 implementación concreta usar.
+                                 implementación concreta usar, y si la corrida
+                                 va al menú o a un comando según los argumentos.
 ```
 
 **Por qué está separado así:** el CLI (`cli/menu.ts`) solo conoce la interfaz
@@ -141,14 +183,19 @@ contra el endpoint real (29/07/2026) y **no funciona**:
   rechaza. El sitio ordena por precio vía Algolia, no vía esta API.
 - `pickupLocations` devuelve siempre `total_count: 0` — no hay store locator
   por API; las tiendas físicas son páginas CMS (`/tiendas/*.html`).
+- **Promociones y Liquidación son categorías normales**, no un endpoint
+  aparte: `epa promos` usa `category_uid` `NDQ0` (Promociones) y `NjM2`
+  (Liquidación), confirmados por consulta directa el 29/07/2026 — si EPA
+  reorganiza el catálogo estos ids podrían cambiar.
 
 ## Próximos pasos posibles
 
-- Modo no interactivo con flags/subcomandos (`epa buscar taladro --json`) para
-  usar el CLI en scripts, además del menú
-- Explorar categorías con flechas (el árbol completo ya es consultable vía
-  `categories`) y refinar resultados por las facetas de precio/categoría que
-  trae `aggregations`
+- Explorar categorías con flechas en el menú interactivo (`epa categorias`
+  ya lista una categoría a la vez desde flags; falta la navegación tipo
+  árbol con `select` dentro del menú)
+- Refinar resultados por las facetas de precio/categoría que trae
+  `aggregations` (ahora mismo `--min/--max/--categoria` hay que conocerlos
+  de antemano, no se sugieren solos como en el sitio)
 - Ficha de detalle de producto (descripción, galería, relacionados)
 - Caché local (SQLite o JSON) para trackear cambios de precio en el tiempo
 - Un `AlgoliaProductRepository` alternativo

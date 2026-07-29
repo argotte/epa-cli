@@ -62,3 +62,22 @@ export interface RawStoreConfig {
 export interface StoreConfigResponse {
   storeConfig: RawStoreConfig;
 }
+
+export interface RawCategoryNode {
+  uid: string;
+  name: string;
+  url_key: string;
+  product_count: number;
+  // Magento lo devuelve como string a pesar del nombre.
+  children_count: string;
+}
+
+export interface RawCategoryWithChildren extends RawCategoryNode {
+  children: RawCategoryNode[];
+}
+
+export interface CategoryChildrenResponse {
+  categories: {
+    items: RawCategoryWithChildren[];
+  };
+}
